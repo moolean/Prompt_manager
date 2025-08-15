@@ -4,63 +4,138 @@
     <meta charset="UTF-8">
     <title>Prompt Manager</title>
     <style>
-        body { font-family: sans-serif; width: 400px; padding: 10px; }
-        h1 { font-size: 1.2em; }
-        #promptList { list-style: none; padding: 0; }
-        #promptList li { display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #eee; }
-        .prompt-name { cursor: pointer; }
-        .prompt-actions button { margin-left: 5px; }
-        #detailView { display: none; margin-top: 15px; }
-        textarea { width: 95%; min-height: 100px; }
-        .version-history { margin-top: 10px; }
-        .version { border: 1px solid #ccc; padding: 5px; margin-top: 5px; }
-        #footer { margin-top: 15px; font-size: 0.8em; }
+        :root {
+            --bg-color: #fff;
+            --primary-color: #007aff;
+            --text-color: #222;
+            --border-color: #e1e1e1;
+            --hover-bg: #f0f0f0;
+            --danger-color: #ff3b30;
+            --secondary-bg: #f2f2f7;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            width: 400px;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+        }
+        h1, h2, h3 { margin: 0 0 8px 0; }
+        h1 { font-size: 1.2em; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+        h2 { font-size: 1.1em; }
+        button {
+            cursor: pointer;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 0.85em;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        button:hover { filter: brightness(1.1); }
+        button.secondary { background-color: #e5e5ea; color: var(--primary-color); }
+        button.danger { background-color: var(--danger-color); }
+
+        #mainView { padding: 0 16px 12px 16px; }
+        #promptList { list-style: none; padding: 0; margin: 12px 0; }
+        #promptList li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 4px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .prompt-name { flex-grow: 1; cursor: pointer; font-weight: 400; font-size: 0.95em; }
+        .prompt-actions { display: flex; gap: 6px; }
+
+        #detailView, #newPromptView { display: none; padding: 12px 16px; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.85em; }
+        input[type="text"], textarea {
+            width: calc(100% - 18px);
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        textarea { min-height: 70px; resize: vertical; }
+        #output { min-height: 35px; }
+        
+        .version-history { max-height: 120px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 5px; padding: 4px; }
+        .version { padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 0.85em; }
+        .version:hover { background-color: var(--hover-bg); }
+        .version.active { background-color: var(--primary-color); color: white; font-weight: 500; }
+
+        .actions-group { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+        #footer { padding: 10px 16px; border-top: 1px solid var(--border-color); background-color: var(--secondary-bg); display: flex; justify-content: center; gap: 10px; }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; padding: 20px; border-radius: 8px; width: 300px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .modal-actions { margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }
     </style>
 </head>
 <body>
-    <h1>Prompt Templates</h1>
-    <ul id="promptList"></ul>
-    <button id="addPromptBtn">Add New Prompt</button>
-    <hr>
+    <h1>Prompt Manager</h1>
 
+    <!-- Main List View -->
+    <div id="mainView">
+        <ul id="promptList"></ul>
+        <button id="addPromptBtn">Add New Prompt</button>
+    </div>
+
+    <!-- Details View -->
     <div id="detailView">
         <h2 id="promptName"></h2>
         <input type="hidden" id="promptId">
-        
-        <div>
-            <label for="promptText">Prompt:</label>
-            <textarea id="promptText"></textarea>
+        <div class="form-group"><label for="promptText">Prompt:</label><textarea id="promptText"></textarea></div>
+        <div class="form-group"><label for="model">Model:</label><input list="model-list" id="model" placeholder="e.g., GPT-4"><datalist id="model-list"></datalist></div>
+        <div class="form-group"><label for="output">Comment:</label><textarea id="output"></textarea></div>
+        <div class="actions-group">
+            <button id="updateCurrentVersionBtn">Update Current</button>
+            <button id="saveVersionBtn" class="secondary">Save as New</button>
+            <button id="copyPromptBtn" class="secondary">Copy</button>
+            <button id="deletePromptBtn" class="danger">Delete</button>
         </div>
-        
-        <div>
-            <label for="model">Model:</label>
-            <input type="text" id="model" placeholder="e.g., GPT-4, Gemini 1.5">
-        </div>
-
-        <div>
-            <label for="output">Output:</label>
-            <textarea id="output"></textarea>
-        </div>
-        
-        <button id="saveVersionBtn">Save as New Version</button>
-        <button id="updateCurrentVersionBtn">Update Current Version</button>
-        <button id="copyPromptBtn">Copy Prompt</button>
-        <button id="usePromptBtn">Use in Chat</button>
-        <button id="deletePromptBtn">Delete Prompt</button>
-
         <h3>Version History</h3>
-        <div id="versionHistory" class="version-history"></div>
+        <div id="versionHistory"></div>
     </div>
 
-    <div id="newPromptView" style="display: none;">
+    <!-- New Prompt View -->
+    <div id="newPromptView">
         <h3>Create New Prompt</h3>
-        <input type="text" id="newPromptName" placeholder="Enter a name for your new prompt">
-        <button id="saveNewPromptBtn">Save Prompt</button>
-        <button id="cancelNewPromptBtn">Cancel</button>
+        <div class="form-group"><input type="text" id="newPromptName" placeholder="Enter a name for your new prompt"></div>
+        <div class="actions-group">
+            <button id="saveNewPromptBtn">Save</button>
+            <button id="cancelNewPromptBtn" class="secondary">Cancel</button>
+        </div>
     </div>
 
+    <!-- Footer for Import/Export -->
     <div id="footer">
-        <a href="options.html" target="_blank">Settings</a>
+        <button id="importBtn" class="secondary">Import</button>
+        <button id="exportBtn" class="secondary">Export</button>
+        <input type="file" id="importFile" accept=".json" style="display: none;">
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="renameModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Rename Prompt</h3>
+            <input type="text" id="renameInput">
+            <div class="modal-actions">
+                <button id="cancelRenameBtn" class="secondary">Cancel</button>
+                <button id="confirmRenameBtn">Save</button>
+            </div>
+        </div>
     </div>
 
     <script src="popup.js"></script>

@@ -1,28 +1,51 @@
+// This script runs in the context of the web page.
+
+// Variable to store the element that was last right-clicked
+let lastRightClickedElement = null;
+
+// Listen for the 'contextmenu' event, which fires before the context menu is displayed.
+// This is more reliable than 'mousedown' for this purpose.
+document.addEventListener('contextmenu', (event) => {
+    lastRightClickedElement = event.target;
+}, true);
+
+
+// Listen for messages from the extension (background script or popup)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'INJECT_PROMPT') {
         const text = message.text;
         
-        // Find the active element, which is likely the user's chat input
-        const activeElement = document.activeElement;
+        // Use the stored element from the contextmenu event
+        const targetElement = lastRightClickedElement;
 
-        if (activeElement && (activeElement.tagName.toLowerCase() === 'textarea' || activeElement.tagName.toLowerCase() === 'input' || activeElement.isContentEditable)) {
-            // For standard input fields and textareas
-            if (typeof activeElement.value !== 'undefined') {
-                 activeElement.value = text;
-            } 
-            // For content-editable divs (used by some modern chat sites)
-            else {
-                activeElement.textContent = text;
+        if (targetElement && (targetElement.tagName.toLowerCase() === 'textarea' || targetElement.isContentEditable)) {
+            // For textareas or content-editable divs
+            if (targetElement.isContentEditable) {
+                targetElement.textContent = text;
+            } else {
+                targetElement.value = text;
             }
 
-            // Dispatch an 'input' event to make sure the website's framework (like React) recognizes the change.
-            activeElement.dispatchEvent(new Event('input', { bubbles: true }));
+            // Dispatch an 'input' event. This is crucial for modern web apps (React, Vue, etc.)
+            // to recognize the change in the input field.
+            targetElement.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
             
             sendResponse({ success: true });
+
         } else {
-            alert('Could not find a suitable text input field. Please click on a chat box first.');
-            sendResponse({ success: false });
+            // Fallback for simple input fields
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName.toLowerCase() === 'input' || activeElement.tagName.toLowerCase() === 'textarea')) {
+                activeElement.value = text;
+                activeElement.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                sendResponse({ success: true });
+            } else {
+                // If no suitable element is found, alert the user.
+                alert('Could not find a suitable text input field. Please click on a chat box or text area first.');
+                sendResponse({ success: false });
+            }
         }
     }
-    return true; // Keep the message channel open for async response
+    // Return true to indicate that the response will be sent asynchronously.
+    return true; 
 });

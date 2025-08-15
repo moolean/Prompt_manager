@@ -1,160 +1,180 @@
-// Using IndexedDB to store the directory handle, as it's not directly storable in chrome.storage
-let db;
-function getDB() {
-    return new Promise((resolve, reject) => {
-        if (db) return resolve(db);
-        const request = indexedDB.open("PromptManagerDB", 1);
-        request.onerror = (event) => reject("Error opening DB");
-        request.onsuccess = (event) => {
-            db = event.target.result;
-            resolve(db);
-        };
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains('handles')) {
-                db.createObjectStore("handles", { keyPath: "id" });
-            }
-        };
-    });
-}
+// --- Chrome Sync Storage Logic ---
 
-async function setHandle(handle) {
-    const db = await getDB();
-    const transaction = db.transaction(["handles"], "readwrite");
-    const store = transaction.objectStore("handles");
-    return new Promise((resolve, reject) => {
-        const request = store.put({ id: "directory", handle });
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function getHandle() {
-    const db = await getDB();
-    const transaction = db.transaction(["handles"], "readonly");
-    const store = transaction.objectStore("handles");
-    const request = store.get("directory");
-    return new Promise(resolve => {
-        request.onsuccess = () => resolve(request.result ? request.result.handle : null);
-        request.onerror = () => resolve(null); // Resolve with null on error
-    });
-}
-
-// --- Permission and File System Logic ---
-const PROMPT_FILE = 'prompts.json';
-
-// Crucial helper function to verify and request permissions
-async function verifyPermission(handle, readWrite) {
-    if (!handle) return false;
-    const options = {};
-    if (readWrite) {
-        options.mode = 'readwrite';
-    }
-    // Check if permission is already granted
-    if ((await handle.queryPermission(options)) === 'granted') {
-        return true;
-    }
-    // Request permission if not granted
-    if ((await handle.requestPermission(options)) === 'granted') {
-        return true;
-    }
-    return false;
-}
-
-
-async function getFileHandle(dirHandle, create = false) {
-    if (!dirHandle) return null;
-    // Before getting the file handle, ensure we have permission for the directory.
-    const hasPermission = await verifyPermission(dirHandle, true);
-    if (!hasPermission) {
-        console.error("Permission denied for directory.");
-        return null;
-    }
-    return await dirHandle.getFileHandle(PROMPT_FILE, { create });
-}
-
-async function readPromptsFile() {
-    const dirHandle = await getHandle();
-    if (!dirHandle) return { success: false, error: 'Directory not selected. Please go to settings.' };
-
+async function getPromptsFromStorage() {
     try {
-        const fileHandle = await getFileHandle(dirHandle);
-        if (!fileHandle) { // File doesn't exist or permission was denied
-             return { success: true, data: { prompts: [] } };
-        }
-        const file = await fileHandle.getFile();
-        const contents = await file.text();
-        // Handle empty file case
-        if (!contents) {
-            return { success: true, data: { prompts: [] } };
-        }
-        return { success: true, data: JSON.parse(contents) };
+        const result = await chrome.storage.sync.get('promptsData');
+        const data = result.promptsData || { prompts: [] };
+        return { success: true, data: data };
     } catch (error) {
-        if (error.name === 'NotFoundError') {
-            return { success: true, data: { prompts: [] } };
-        }
-        console.error('Error reading prompts file:', error);
+        console.error('Error reading from sync storage:', error);
         return { success: false, error: error.message };
     }
 }
 
-async function savePromptsFile(data) {
-    const dirHandle = await getHandle();
-    if (!dirHandle) return { success: false, error: 'Directory not selected. Please go to settings.' };
-
+async function savePromptsToStorage(data) {
     try {
-        const fileHandle = await getFileHandle(dirHandle, true); // Create if it doesn't exist
-        if (!fileHandle) {
-            return { success: false, error: 'Could not get file handle. Permission might be denied.' };
-        }
-        const writable = await fileHandle.createWritable();
-        await writable.write(JSON.stringify(data, null, 2)); // Pretty print JSON
-        await writable.close();
+        await chrome.storage.sync.set({ promptsData: data });
+        // After saving, update the context menu
+        updateContextMenu(data.prompts);
         return { success: true };
     } catch (error) {
-        console.error('Error saving prompts file:', error);
+        console.error('Error saving to sync storage:', error);
         return { success: false, error: error.message };
     }
 }
 
+// --- Context Menu Logic ---
 
-// --- Message Listener ---
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Return true to indicate you wish to send a response asynchronously
-    let isAsync = true;
+const CONTEXT_MENU_ID = "PROMPT_MANAGER_PARENT";
 
-    switch (message.type) {
-        case 'SET_DIRECTORY_HANDLE':
-            setHandle(message.handle)
-                .then(() => sendResponse({ success: true }))
-                .catch(err => sendResponse({ success: false, error: err.message }));
-            break;
-
-        case 'GET_DIRECTORY_HANDLE':
-            getHandle().then(handle => {
-                if (handle) {
-                    // Just before sending, verify permission silently
-                    verifyPermission(handle, false).then(hasPermission => {
-                         sendResponse({ success: true, handle: handle, hasPermission: hasPermission });
-                    });
-                } else {
-                    sendResponse({ success: false, handle: null });
-                }
-            });
-            break;
-
-        case 'GET_PROMPTS':
-            readPromptsFile().then(sendResponse);
-            break;
-
-        case 'SAVE_PROMPTS':
-            savePromptsFile(message.data).then(sendResponse);
-            break;
+function updateContextMenu(prompts) {
+    chrome.contextMenus.removeAll(() => {
+        if (chrome.runtime.lastError) { /* Ignore */ }
         
+        // Menu for injecting prompts
+        chrome.contextMenus.create({
+            id: CONTEXT_MENU_ID,
+            title: "Inject Prompt",
+            contexts: ["editable"]
+        });
+
+        if (prompts && prompts.length > 0) {
+            prompts.forEach(prompt => {
+                chrome.contextMenus.create({
+                    id: prompt.id,
+                    parentId: CONTEXT_MENU_ID,
+                    title: prompt.name,
+                    contexts: ["editable"]
+                });
+            });
+        } else {
+             chrome.contextMenus.create({
+                id: "no-prompts",
+                parentId: CONTEXT_MENU_ID,
+                title: "No prompts available",
+                enabled: false,
+                contexts: ["editable"]
+            });
+        }
+
+        // Menu for saving selected text
+        chrome.contextMenus.create({
+            id: "SAVE_SELECTION_AS_PROMPT",
+            title: "Save selection as new Prompt",
+            contexts: ["selection"]
+        });
+    });
+}
+
+// Listener for when a context menu item is clicked
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    // Security check: Do not run on protected browser pages or web stores.
+    if (tab.url.startsWith('edge://') || tab.url.startsWith('chrome://') || 
+        tab.url.includes('chrome.google.com/webstore') || 
+        tab.url.includes('microsoft.com')) {
+        console.log("Prompt Manager: Action prevented on a protected page.");
+        return;
+    }
+
+    // Handler for injecting a prompt
+    if (info.parentMenuItemId === CONTEXT_MENU_ID && info.menuItemId !== "no-prompts") {
+        const promptId = info.menuItemId;
+        const { success, data } = await getPromptsFromStorage();
+        if (success) {
+            const prompt = data.prompts.find(p => p.id === promptId);
+            if (prompt) {
+                const latestVersion = prompt.versions.find(v => v.version === prompt.currentVersion);
+                if (latestVersion) {
+                    // Try sending a message to the content script first.
+                    chrome.tabs.sendMessage(tab.id, {
+                        type: 'INJECT_PROMPT',
+                        text: latestVersion.promptText
+                    }, { frameId: info.frameId }, (response) => {
+                        // If it fails, inject the script programmatically.
+                        if (chrome.runtime.lastError) {
+                            console.log("Content script not available, injecting manually.");
+                            chrome.scripting.executeScript({
+                                target: { tabId: tab.id, frameIds: [info.frameId] },
+                                func: (textToInject) => {
+                                    const activeElement = document.activeElement;
+                                    if (activeElement) {
+                                        if (activeElement.isContentEditable) {
+                                            activeElement.textContent = textToInject;
+                                        } else if (typeof activeElement.value !== 'undefined') {
+                                            activeElement.value = textToInject;
+                                        }
+                                        activeElement.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                                    }
+                                },
+                                args: [latestVersion.promptText]
+                            });
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    // Handler for saving the selection
+    if (info.menuItemId === "SAVE_SELECTION_AS_PROMPT") {
+        const selectionText = info.selectionText;
+        if (selectionText) {
+            const { success, data } = await getPromptsFromStorage();
+            if (success) {
+                const newName = `New: "${selectionText.substring(0, 25)}..."`;
+                const newPrompt = {
+                    id: `prompt_${Date.now()}`,
+                    name: newName,
+                    currentVersion: 1,
+                    versions: [{
+                        version: 1,
+                        promptText: selectionText,
+                        model: '',
+                        output: ''
+                    }]
+                };
+                data.prompts.push(newPrompt);
+                await savePromptsToStorage(data);
+            }
+        }
+    }
+});
+
+// --- Message Listener & Initial Setup ---
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    let isAsync = true;
+    switch (message.type) {
+        case 'GET_PROMPTS':
+            getPromptsFromStorage().then(sendResponse);
+            break;
+        case 'SAVE_PROMPTS':
+            savePromptsToStorage(message.data).then(sendResponse);
+            break;
+        case 'UPDATE_CONTEXT_MENU':
+            getPromptsFromStorage().then(result => {
+                if(result.success) updateContextMenu(result.data.prompts);
+            });
+            // No response needed for this message
+            isAsync = false;
+            break;
         default:
-            isAsync = false; // No async response for unhandled messages
+            isAsync = false;
             break;
     }
-    
     return isAsync;
+});
+
+// Initialize context menu on startup
+chrome.runtime.onStartup.addListener(() => {
+    getPromptsFromStorage().then(result => {
+        if(result.success) updateContextMenu(result.data.prompts);
+    });
+});
+
+// Initialize context menu on install/update
+chrome.runtime.onInstalled.addListener(() => {
+    getPromptsFromStorage().then(result => {
+        if(result.success) updateContextMenu(result.data.prompts);
+    });
 });
