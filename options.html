@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prompt Manager Settings</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h1 { font-size: 1.5em; }
+        p { max-width: 600px; }
+        #status { margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Settings</h1>
+    <p>
+        To use this extension, you must grant permission to a local folder. 
+        All your prompt data will be stored in a single 'prompts.json' file inside the selected folder.
+        This allows you to easily back up, sync, or manage your data.
+    </p>
+    <button id="selectFolderBtn">Select Storage Folder</button>
+    <div id="status">
+        Current folder: <span id="folderPath">Not selected</span>
+    </div>
+
+    <script src="options.js"></script>
+</body>
+</html>

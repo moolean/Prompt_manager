@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prompt Manager</title>
+    <style>
+        body { font-family: sans-serif; width: 400px; padding: 10px; }
+        h1 { font-size: 1.2em; }
+        #promptList { list-style: none; padding: 0; }
+        #promptList li { display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #eee; }
+        .prompt-name { cursor: pointer; }
+        .prompt-actions button { margin-left: 5px; }
+        #detailView { display: none; margin-top: 15px; }
+        textarea { width: 95%; min-height: 100px; }
+        .version-history { margin-top: 10px; }
+        .version { border: 1px solid #ccc; padding: 5px; margin-top: 5px; }
+        #footer { margin-top: 15px; font-size: 0.8em; }
+    </style>
+</head>
+<body>
+    <h1>Prompt Templates</h1>
+    <ul id="promptList"></ul>
+    <button id="addPromptBtn">Add New Prompt</button>
+    <hr>
+
+    <div id="detailView">
+        <h2 id="promptName"></h2>
+        <input type="hidden" id="promptId">
+        
+        <div>
+            <label for="promptText">Prompt:</label>
+            <textarea id="promptText"></textarea>
+        </div>
+        
+        <div>
+            <label for="model">Model:</label>
+            <input type="text" id="model" placeholder="e.g., GPT-4, Gemini 1.5">
+        </div>
+
+        <div>
+            <label for="output">Output:</label>
+            <textarea id="output"></textarea>
+        </div>
+        
+        <button id="saveVersionBtn">Save as New Version</button>
+        <button id="updateCurrentVersionBtn">Update Current Version</button>
+        <button id="copyPromptBtn">Copy Prompt</button>
+        <button id="usePromptBtn">Use in Chat</button>
+        <button id="deletePromptBtn">Delete Prompt</button>
+
+        <h3>Version History</h3>
+        <div id="versionHistory" class="version-history"></div>
+    </div>
+
+    <div id="newPromptView" style="display: none;">
+        <h3>Create New Prompt</h3>
+        <input type="text" id="newPromptName" placeholder="Enter a name for your new prompt">
+        <button id="saveNewPromptBtn">Save Prompt</button>
+        <button id="cancelNewPromptBtn">Cancel</button>
+    </div>
+
+    <div id="footer">
+        <a href="options.html" target="_blank">Settings</a>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
