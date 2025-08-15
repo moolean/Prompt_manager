@@ -13,12 +13,12 @@
 
 ### Home page
 
-![img](showImg\homepage.png)
+![img](showImg/homepage.png)
 
 ### New prompt
 
-![img](showImg\newprompt.png)
+![img](showImg/newprompt.png)
 
 ### Add prompt
 
-![img](showImg\addprompt.png)
+![img](showImg/addprompt.png)
